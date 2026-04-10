@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Akıllı Çeviri | TR-FR (Mobil & Kamera Uyumlu)</title>
+    <title>Akıllı Çeviri | TR-FR (Kesintisiz Bağlantı)</title>
     <style>
         body { background-color: #111; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
         .video-container { display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
@@ -21,7 +21,8 @@
         #benimAltyazim { color: #00d4ff; border-left: 5px solid #00d4ff; }
         #karsiAltyazi { color: #ffcc00; border-left: 5px solid #ffcc00; }
 
-        button { padding: 15px 35px; font-size: 1.1rem; cursor: pointer; background: #8e44ad; color: white; border: none; border-radius: 35px; font-weight: bold; transition: 0.3s; margin: 10px; }
+        button { padding: 15px 35px; font-size: 1.1rem; cursor: pointer; background: #8e44ad; color: white; border: none; border-radius: 35px; font-weight: bold; transition: 0.3s; margin: 10px; box-shadow: 0 4px 10px rgba(142, 68, 173, 0.4); }
+        button:active { transform: scale(0.95); }
         #durum { color: #8e44ad; margin-bottom: 10px; font-weight: bold; font-size: 1.2rem; min-height: 25px; }
     </style>
 </head>
@@ -30,11 +31,10 @@
     <h1>TR-FR Akıllı Çeviri 🌍</h1>
     <div id="durum">📸 Kamera İznini Verin ve Sayfaya Tıklayın!</div>
     
-    <button id="aramaYapBtn">Bağlantıyı Başlat 📞</button>
+    <button id="aramaYapBtn">Görüşmeyi Başlat 📞</button>
 
     <div class="video-container">
         <div class="video-wrapper">
-            <!-- Mobilde video oynatmak için muted ve playsinline şarttır -->
             <video id="benimKameram" autoplay muted playsinline></video>
             <div id="benimAltyazim" class="altyazi"></div>
         </div>
@@ -56,30 +56,36 @@
 
         let yerelYayin = null, peerConnection = null;
         let benimDilim = "tr-TR"; 
-        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        
+        // GÜNCELLEME: Daha fazla STUN sunucusu ile NAT engelini aşma
+        const config = { 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ] 
+        };
 
-        // 1. KAMERA YAKALAMA (Telefonda Çalışması İçin Değiştirildi)
+        // 1. Kamera Kurulumu
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
             .then(stream => { 
                 benimKameram.srcObject = stream; 
                 yerelYayin = stream; 
-                durumCubugu.innerText = "✅ Kamera Hazır. Konuşmak İçin Tıkla!";
+                durumCubugu.innerText = "✅ Kamera Hazır. Bağlantı Bekleniyor...";
             })
             .catch(err => {
-                console.error("Hata:", err);
                 durumCubugu.innerText = "❌ Kamera İzni Gerekli!";
             });
 
-        // 2. SES TANIMA (Sessizlik Bekleme Modu)
+        // 2. Ses Tanıma
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
 
         function sesiAc() {
             if (recognition || !SpeechRecognition) return;
-
             recognition = new SpeechRecognition();
             recognition.continuous = true;
-            recognition.interimResults = false; // Konuşma tam bitince metni verir (istediğin özellik)
+            recognition.interimResults = false;
             recognition.lang = benimDilim;
 
             recognition.onstart = () => {
@@ -88,16 +94,11 @@
             };
 
             recognition.onresult = (event) => {
-                const sonSonucIndex = event.results.length - 1;
-                const text = event.results[sonSonucIndex][0].transcript;
-                
+                const text = event.results[event.results.length - 1][0].transcript;
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
                     benimAltyazim.innerText = text;
-                    
-                    // Karşıya metni ve dili gönder
                     socket.emit('altyazi', { metin: text, kaynakDil: recognition.lang });
-                    
                     clearTimeout(window.bZ);
                     window.bZ = setTimeout(() => { benimAltyazim.style.display = 'none'; }, 4000);
                 }
@@ -107,9 +108,39 @@
             recognition.start();
         }
 
-        // 3. WebRTC Bağlantı (Otomatik Rol Atamalı)
+        // 3. WebRTC Fonksiyonları
+        function baglantiyiKur() {
+            peerConnection = new RTCPeerConnection(config);
+            
+            // Kanalları ekle
+            yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
+
+            // Karşıdan görüntü geldiğinde
+            peerConnection.ontrack = (event) => {
+                if (karsiKamera.srcObject !== event.streams[0]) {
+                    karsiKamera.srcObject = event.streams[0];
+                    console.log("Karşı görüntü bağlandı.");
+                }
+            };
+
+            // Yol tarifi bulduğunda
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+
+            // Bağlantı durumunu izle
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === 'connected') {
+                    durumCubugu.innerText = "✅ Görüşme Başladı!";
+                    aramaYapBtn.innerText = "Görüşme Aktif ✅";
+                }
+            };
+        }
+
         aramaYapBtn.onclick = async () => {
-            if (!yerelYayin) return alert("Kamera henüz hazır değil!");
+            if (!yerelYayin) return alert("Kamera hazır değil!");
             benimDilim = "tr-TR";
             if(recognition) recognition.lang = "tr-TR";
             
@@ -117,7 +148,7 @@
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('offer', offer);
-            aramaYapBtn.innerText = "Bağlanıyor...";
+            aramaYapBtn.innerText = "Aranıyor...";
         };
 
         socket.on('offer', async (offer) => {
@@ -125,26 +156,22 @@
             if(recognition) recognition.lang = "fr-FR";
             
             if (!peerConnection) baglantiyiKur();
-            await peerConnection.setRemoteDescription(offer);
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             socket.emit('answer', answer);
         });
 
-        function baglantiyiKur() {
-            peerConnection = new RTCPeerConnection(config);
-            yerelYayin.getTracks().forEach(t => peerConnection.addTrack(t, yerelYayin));
-            peerConnection.ontrack = (e) => { karsiKamera.srcObject = e.streams[0]; };
-            peerConnection.onicecandidate = (e) => { if (e.candidate) socket.emit('ice-candidate', e.candidate); };
-        }
-
-        socket.on('answer', async (a) => { 
-            await peerConnection.setRemoteDescription(a); 
-            aramaYapBtn.innerText = "Görüşme Aktif ✅";
+        socket.on('answer', async (answer) => { 
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
         });
 
-        socket.on('ice-candidate', async (c) => { 
-            try { if(peerConnection) await peerConnection.addIceCandidate(c); } catch(e) {} 
+        socket.on('ice-candidate', async (candidate) => { 
+            try {
+                if(peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+            } catch(e) { console.warn("ICE Hatası:", e); } 
         });
 
         // 4. Çeviri Motoru
