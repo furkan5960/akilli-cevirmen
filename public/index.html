@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Akıllı Çeviri | TR-FR (Kesintisiz Bağlantı)</title>
+    <title>Akıllı Çeviri | TR-FR (Son Düzeltme)</title>
     <style>
         body { background-color: #111; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
         .video-container { display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
@@ -26,7 +26,7 @@
         #durum { color: #8e44ad; margin-bottom: 10px; font-weight: bold; font-size: 1.2rem; min-height: 25px; }
     </style>
 </head>
-<body onclick="sesiAc()">
+<body onclick="ekranaDokunuldu()">
 
     <h1>TR-FR Akıllı Çeviri 🌍</h1>
     <div id="durum">📸 Kamera İznini Verin ve Sayfaya Tıklayın!</div>
@@ -56,22 +56,12 @@
 
         let yerelYayin = null, peerConnection = null;
         let benimDilim = "tr-TR"; 
-        let islemDevamEdiyor = false; // ÇİFT TIKLAMA KİLİDİ
+        let islemDevamEdiyor = false;
 
-        // 4.5G DUVAR DELİCİ (TURN SERVER EKLENDİ)
         const config = { 
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { 
-                    urls: 'turn:openrelay.metered.ca:80',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                }
-            ] 
+            iceServers: 
         };
 
-        // 1. Kamera Kurulumu
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
             .then(stream => { 
                 benimKameram.srcObject = stream; 
@@ -82,7 +72,12 @@
                 durumCubugu.innerText = "❌ Kamera İzni Gerekli!";
             });
 
-        // 2. Ses Tanıma (Düzeltildi)
+        // 🟢 TELEFONLARIN VİDEOYU GİZLEMESİNİ ENGELLEYEN YENİ KOD
+        function ekranaDokunuldu() {
+            sesiAc();
+            if(karsiKamera.srcObject) karsiKamera.play().catch(e => console.log("Video oynatılıyor"));
+        }
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         function sesiAc() {
@@ -93,7 +88,7 @@
             recognition.lang = benimDilim;
             recognition.onstart = () => { durumCubugu.style.color = "#2ecc71"; };
             recognition.onresult = (event) => {
-                const sonSecim = event.results.length - 1;
+                const sonIndex = event.results.length - 1;
                 const text = event.results.transcript;
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
@@ -107,17 +102,17 @@
             recognition.start();
         }
 
-        // 3. WebRTC Fonksiyonları (Görüntü Ekrana Basma Hatası Düzeltildi)
         function baglantiyiKur() {
             if (peerConnection) return; 
             peerConnection = new RTCPeerConnection(config);
             
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
-            // BURASI DÜZELTİLDİ: event.streams eklendi
+            // 🟢 BÜYÜK HATA BURADAYDI, DÜZELTİLDİ: event.streams OLMAK ZORUNDA
             peerConnection.ontrack = (event) => {
                 if (event.streams && event.streams) {
                     karsiKamera.srcObject = event.streams;
+                    karsiKamera.play().catch(e => console.log("Otomatik oynatma bekliyor"));
                     durumCubugu.innerText = "✅ Görüşme Başladı!";
                     aramaYapBtn.innerText = "Görüşme Aktif ✅";
                 }
@@ -130,7 +125,6 @@
             };
         }
 
-        // Arama Başlatan Taraf
         aramaYapBtn.onclick = async () => {
             if (!yerelYayin) return alert("Kamera hazır değil!");
             if (islemDevamEdiyor) return; 
@@ -148,7 +142,6 @@
             socket.emit('offer', offer);
         };
 
-        // Gelen Aramayı Karşılayan Taraf
         socket.on('offer', async (offer) => {
             if (islemDevamEdiyor) return; 
             
@@ -178,7 +171,7 @@
             } catch(e) {} 
         });
 
-        // 4. Çeviri Motoru
+        // Çeviri Motoru
         socket.on('altyazi', async (veri) => {
             const kaynak = veri.kaynakDil.split('-');
             const hedef = benimDilim.split('-');
