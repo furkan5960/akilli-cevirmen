@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Akıllı Çeviri | TR-FR (Son Düzeltme)</title>
+    <title>Akıllı Çeviri | TR-FR (Son ve Kesin)</title>
     <style>
         body { background-color: #111; color: white; font-family: sans-serif; text-align: center; margin: 0; padding: 10px; }
         .video-container { display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
@@ -58,8 +58,17 @@
         let benimDilim = "tr-TR"; 
         let islemDevamEdiyor = false;
 
+        // BÜYÜK HATAYI BURADA YAPMIŞTIM, ŞU AN DÜZELTİLDİ
         const config = { 
-            iceServers: 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { 
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ] 
         };
 
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true })
@@ -72,7 +81,6 @@
                 durumCubugu.innerText = "❌ Kamera İzni Gerekli!";
             });
 
-        // 🟢 TELEFONLARIN VİDEOYU GİZLEMESİNİ ENGELLEYEN YENİ KOD
         function ekranaDokunuldu() {
             sesiAc();
             if(karsiKamera.srcObject) karsiKamera.play().catch(e => console.log("Video oynatılıyor"));
@@ -108,8 +116,8 @@
             
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
-            // 🟢 BÜYÜK HATA BURADAYDI, DÜZELTİLDİ: event.streams OLMAK ZORUNDA
             peerConnection.ontrack = (event) => {
+                // EKRANA GÖRÜNTÜYÜ VERMEYEN DİĞER HATA DA BUYDU EKLENDİ
                 if (event.streams && event.streams) {
                     karsiKamera.srcObject = event.streams;
                     karsiKamera.play().catch(e => console.log("Otomatik oynatma bekliyor"));
@@ -171,7 +179,6 @@
             } catch(e) {} 
         });
 
-        // Çeviri Motoru
         socket.on('altyazi', async (veri) => {
             const kaynak = veri.kaynakDil.split('-');
             const hedef = benimDilim.split('-');
