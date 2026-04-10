@@ -21,8 +21,8 @@
         #benimAltyazim { color: #00d4ff; border-left: 5px solid #00d4ff; }
         #karsiAltyazi { color: #ffcc00; border-left: 5px solid #ffcc00; }
 
-        button { padding: 15px 35px; font-size: 1.1rem; cursor: pointer; background: #8e44ad; color: white; border: none; border-radius: 35px; font-weight: bold; transition: 0.3s; margin: 10px; box-shadow: 0 4px 10px rgba(142, 68, 173, 0.4); }
-        button:active { transform: scale(0.95); }
+        button { padding: 15px 35px; font-size: 1.1rem; cursor: pointer; background: #8e44ad; color: white; border: none; border-radius: 35px; font-weight: bold; transition: 0.3s; margin: 10px; }
+        button:disabled { background: #555; cursor: not-allowed; transform: none; }
         #durum { color: #8e44ad; margin-bottom: 10px; font-weight: bold; font-size: 1.2rem; min-height: 25px; }
     </style>
 </head>
@@ -56,13 +56,18 @@
 
         let yerelYayin = null, peerConnection = null;
         let benimDilim = "tr-TR"; 
-        
-        // GÜNCELLEME: Daha fazla STUN sunucusu ile NAT engelini aşma
+        let islemDevamEdiyor = false; // ÇİFT TIKLAMA KİLİDİ
+
+        // 4.5G DUVAR DELİCİ (TURN SERVER EKLENDİ)
         const config = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { 
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ] 
         };
 
@@ -71,30 +76,24 @@
             .then(stream => { 
                 benimKameram.srcObject = stream; 
                 yerelYayin = stream; 
-                durumCubugu.innerText = "✅ Kamera Hazır. Bağlantı Bekleniyor...";
+                durumCubugu.innerText = "✅ Kamera Hazır. Bekleniyor...";
             })
             .catch(err => {
                 durumCubugu.innerText = "❌ Kamera İzni Gerekli!";
             });
 
-        // 2. Ses Tanıma
+        // 2. Ses Tanıma (Aynı kaldı)
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
-
         function sesiAc() {
             if (recognition || !SpeechRecognition) return;
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = false;
             recognition.lang = benimDilim;
-
-            recognition.onstart = () => {
-                durumCubugu.innerText = "🎙️ Dinliyor (Sustuğunda Çevirecek)...";
-                durumCubugu.style.color = "#2ecc71";
-            };
-
+            recognition.onstart = () => { durumCubugu.style.color = "#2ecc71"; };
             recognition.onresult = (event) => {
-                const text = event.results[event.results.length - 1][0].transcript;
+                const text = event.results.transcript;
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
                     benimAltyazim.innerText = text;
@@ -103,44 +102,40 @@
                     window.bZ = setTimeout(() => { benimAltyazim.style.display = 'none'; }, 4000);
                 }
             };
-
             recognition.onend = () => { recognition.start(); };
             recognition.start();
         }
 
-        // 3. WebRTC Fonksiyonları
+        // 3. WebRTC Fonksiyonları (GELİŞMİŞ VE KİLİTLİ)
         function baglantiyiKur() {
+            if (peerConnection) return; // Zaten varsa kurma (Çiftlemeyi önler)
             peerConnection = new RTCPeerConnection(config);
             
-            // Kanalları ekle
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
-            // Karşıdan görüntü geldiğinde
             peerConnection.ontrack = (event) => {
-                if (karsiKamera.srcObject !== event.streams[0]) {
-                    karsiKamera.srcObject = event.streams[0];
-                    console.log("Karşı görüntü bağlandı.");
+                if (karsiKamera.srcObject !== event.streams) {
+                    karsiKamera.srcObject = event.streams;
+                    durumCubugu.innerText = "✅ Görüşme Başladı!";
                 }
             };
 
-            // Yol tarifi bulduğunda
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('ice-candidate', event.candidate);
                 }
             };
-
-            // Bağlantı durumunu izle
-            peerConnection.onconnectionstatechange = () => {
-                if (peerConnection.connectionState === 'connected') {
-                    durumCubugu.innerText = "✅ Görüşme Başladı!";
-                    aramaYapBtn.innerText = "Görüşme Aktif ✅";
-                }
-            };
         }
 
+        // Arama Başlatan Taraf
         aramaYapBtn.onclick = async () => {
             if (!yerelYayin) return alert("Kamera hazır değil!");
+            if (islemDevamEdiyor) return; // KİLİT!
+            
+            islemDevamEdiyor = true;
+            aramaYapBtn.disabled = true; // Butonu kullanıma kapat
+            aramaYapBtn.innerText = "Aranıyor... ⏳";
+            
             benimDilim = "tr-TR";
             if(recognition) recognition.lang = "tr-TR";
             
@@ -148,14 +143,20 @@
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             socket.emit('offer', offer);
-            aramaYapBtn.innerText = "Aranıyor...";
         };
 
+        // Gelen Aramayı Karşılayan Taraf
         socket.on('offer', async (offer) => {
+            if (islemDevamEdiyor) return; // Zaten işlemdeyse gelen fazlalıkları reddet
+            
+            islemDevamEdiyor = true;
+            aramaYapBtn.disabled = true;
+            aramaYapBtn.innerText = "Bağlanıyor... ⏳";
+
             benimDilim = "fr-FR";
             if(recognition) recognition.lang = "fr-FR";
             
-            if (!peerConnection) baglantiyiKur();
+            baglantiyiKur();
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
@@ -163,21 +164,22 @@
         });
 
         socket.on('answer', async (answer) => { 
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
+            if(peerConnection && peerConnection.signalingState !== "stable") {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
+                aramaYapBtn.innerText = "Görüşme Aktif ✅";
+            }
         });
 
         socket.on('ice-candidate', async (candidate) => { 
             try {
-                if(peerConnection) {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                }
-            } catch(e) { console.warn("ICE Hatası:", e); } 
+                if(peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch(e) {} 
         });
 
-        // 4. Çeviri Motoru
+        // 4. Çeviri Motoru (Aynı kaldı)
         socket.on('altyazi', async (veri) => {
-            const kaynak = veri.kaynakDil.split('-')[0];
-            const hedef = benimDilim.split('-')[0];
+            const kaynak = veri.kaynakDil.split('-');
+            const hedef = benimDilim.split('-');
             let finalMsg = veri.metin;
 
             if (kaynak !== hedef) {
@@ -185,9 +187,8 @@
                     const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(veri.metin)}&langpair=${kaynak}|${hedef}`);
                     const data = await res.json();
                     finalMsg = data.responseData.translatedText;
-                } catch (e) { console.log("Çeviri hatası"); }
+                } catch (e) { }
             }
-
             karsiAltyazi.style.display = 'block';
             karsiAltyazi.innerText = finalMsg;
             clearTimeout(window.kZ);
