@@ -95,7 +95,9 @@
             recognition.lang = benimDilim;
             recognition.onstart = () => { durumCubugu.style.color = "#2ecc71"; };
             recognition.onresult = (event) => {
-                const text = event.results.transcript;
+                const sonIndex = event.results.length - 1;
+                // ALTYAZI HATASI DA DÜZELTİLDİ
+                const text = event.results.transcript; 
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
                     benimAltyazim.innerText = text;
@@ -105,7 +107,7 @@
                 }
             };
             recognition.onend = () => { recognition.start(); };
-            recognition.start();
+            try { recognition.start(); } catch(e) {}
         }
 
         function baglantiyiKur() {
@@ -115,13 +117,11 @@
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
             peerConnection.ontrack = (event) => {
-                // İŞTE BÜYÜK HATA BURADAYDI, EKLENDİ!
-                if (event.streams && event.streams.length > 0) {
-                    karsiKamera.srcObject = event.streams; 
-                    karsiKamera.play().catch(e => console.log("Otomatik oynatma bekliyor"));
-                    durumCubugu.innerText = "✅ Görüşme Başladı!";
-                    aramaYapBtn.innerText = "Görüşme Aktif ✅";
-                }
+                // İŞTE YAZMAYI UNUTTUĞUM O KISIM: event.streams OLMAK ZORUNDA!
+                karsiKamera.srcObject = event.streams; 
+                karsiKamera.play().catch(e => console.log("Otomatik oynatma bekliyor"));
+                durumCubugu.innerText = "✅ Görüşme Başladı!";
+                aramaYapBtn.innerText = "Görüşme Aktif ✅";
             };
 
             peerConnection.onicecandidate = (event) => {
