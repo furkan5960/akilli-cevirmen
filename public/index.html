@@ -58,7 +58,6 @@
         let benimDilim = "tr-TR"; 
         let islemDevamEdiyor = false;
 
-        // BÜYÜK HATAYI BURADA YAPMIŞTIM, ŞU AN DÜZELTİLDİ
         const config = { 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -96,7 +95,6 @@
             recognition.lang = benimDilim;
             recognition.onstart = () => { durumCubugu.style.color = "#2ecc71"; };
             recognition.onresult = (event) => {
-                const sonIndex = event.results.length - 1;
                 const text = event.results.transcript;
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
@@ -117,9 +115,9 @@
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
             peerConnection.ontrack = (event) => {
-                // EKRANA GÖRÜNTÜYÜ VERMEYEN DİĞER HATA DA BUYDU EKLENDİ
-                if (event.streams && event.streams) {
-                    karsiKamera.srcObject = event.streams;
+                // İŞTE BÜYÜK HATA BURADAYDI, EKLENDİ!
+                if (event.streams && event.streams.length > 0) {
+                    karsiKamera.srcObject = event.streams; 
                     karsiKamera.play().catch(e => console.log("Otomatik oynatma bekliyor"));
                     durumCubugu.innerText = "✅ Görüşme Başladı!";
                     aramaYapBtn.innerText = "Görüşme Aktif ✅";
