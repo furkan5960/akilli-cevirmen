@@ -82,7 +82,7 @@
                 durumCubugu.innerText = "❌ Kamera İzni Gerekli!";
             });
 
-        // 2. Ses Tanıma (Aynı kaldı)
+        // 2. Ses Tanıma (Düzeltildi)
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         function sesiAc() {
@@ -93,6 +93,7 @@
             recognition.lang = benimDilim;
             recognition.onstart = () => { durumCubugu.style.color = "#2ecc71"; };
             recognition.onresult = (event) => {
+                const sonSecim = event.results.length - 1;
                 const text = event.results.transcript;
                 if(text.trim() !== "") {
                     benimAltyazim.style.display = 'block';
@@ -106,17 +107,19 @@
             recognition.start();
         }
 
-        // 3. WebRTC Fonksiyonları (GELİŞMİŞ VE KİLİTLİ)
+        // 3. WebRTC Fonksiyonları (Görüntü Ekrana Basma Hatası Düzeltildi)
         function baglantiyiKur() {
-            if (peerConnection) return; // Zaten varsa kurma (Çiftlemeyi önler)
+            if (peerConnection) return; 
             peerConnection = new RTCPeerConnection(config);
             
             yerelYayin.getTracks().forEach(track => peerConnection.addTrack(track, yerelYayin));
 
+            // BURASI DÜZELTİLDİ: event.streams eklendi
             peerConnection.ontrack = (event) => {
-                if (karsiKamera.srcObject !== event.streams) {
+                if (event.streams && event.streams) {
                     karsiKamera.srcObject = event.streams;
                     durumCubugu.innerText = "✅ Görüşme Başladı!";
+                    aramaYapBtn.innerText = "Görüşme Aktif ✅";
                 }
             };
 
@@ -130,10 +133,10 @@
         // Arama Başlatan Taraf
         aramaYapBtn.onclick = async () => {
             if (!yerelYayin) return alert("Kamera hazır değil!");
-            if (islemDevamEdiyor) return; // KİLİT!
+            if (islemDevamEdiyor) return; 
             
             islemDevamEdiyor = true;
-            aramaYapBtn.disabled = true; // Butonu kullanıma kapat
+            aramaYapBtn.disabled = true; 
             aramaYapBtn.innerText = "Aranıyor... ⏳";
             
             benimDilim = "tr-TR";
@@ -147,7 +150,7 @@
 
         // Gelen Aramayı Karşılayan Taraf
         socket.on('offer', async (offer) => {
-            if (islemDevamEdiyor) return; // Zaten işlemdeyse gelen fazlalıkları reddet
+            if (islemDevamEdiyor) return; 
             
             islemDevamEdiyor = true;
             aramaYapBtn.disabled = true;
@@ -166,7 +169,6 @@
         socket.on('answer', async (answer) => { 
             if(peerConnection && peerConnection.signalingState !== "stable") {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
-                aramaYapBtn.innerText = "Görüşme Aktif ✅";
             }
         });
 
@@ -176,7 +178,7 @@
             } catch(e) {} 
         });
 
-        // 4. Çeviri Motoru (Aynı kaldı)
+        // 4. Çeviri Motoru
         socket.on('altyazi', async (veri) => {
             const kaynak = veri.kaynakDil.split('-');
             const hedef = benimDilim.split('-');
